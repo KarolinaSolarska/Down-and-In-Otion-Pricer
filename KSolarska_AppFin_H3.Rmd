@@ -1,0 +1,146 @@
+---
+title: "down-and-in call option"
+author: "Karolina Solarska"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r, include=FALSE}
+# Uncomment and run if `Myoptionpricer` is not installed
+# install.packages("DownAndInOptionPricer_0.0.0.9000.tar.gz", repos = NULL, type = "source")
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(Rcpp)
+library(tidyr)
+
+sourceCpp("DownAndInOptionPricer/src/DownAndInOptionPricer.cpp")
+```
+
+### Objective of the Project
+The objective of this project is to analyze the theoretical price of a down-and-in call option using a Monte Carlo simulation approach. The analysis will also explore how the option price is affected by the underlying instrument's volatility and the time to maturity.
+
+### Assumptions
+- The underlying asset price follows a geometric Brownian motion.
+- The number of iterations in the Monte Carlo simulation is set to r num_sims.
+- The risk-free rate is constant over the option's life.
+- No dividends are paid during the option's life.
+
+### Description of the Option
+A down-and-in call option is a type of barrier option which becomes active when the price of the underlying asset falls below a certain barrier level. This option gives the holder the right, but not the obligation, to buy the underlying asset at a specified strike price, provided the asset's price has touched or fallen below the barrier price during the option's life.
+
+Characteristics of the option:
+
+Strike price (K): *K*
+Underlying asset initial price (S0): *S0*
+Volatility (sigma): *sigma*
+Risk-free interest rate (r): *r*
+Barrier level: *barrier*
+Time to maturity (Expiration in years): *Expiration*
+
+calculating the theoretical price with the given parameters.
+```{r}
+Expiration <- 0.75 # Time to maturity
+K <- 150 # Strike price
+S0 <- 140 # Price of the underlying at the moment of option pricing
+sigma <- 0.24 # Annualized volatility rate
+r <- 0.07 # Annualized risk-free rate
+barrier <- 130 # setting barrier level, below S0
+num_sims <- 100000 # Number of Monte Carlo simulations
+
+```
+
+```{r}
+# Call the Monte Carlo option pricer
+price <- DownAndInOptionPricer(Expiration, K, S0, sigma, r, barrier, num_sims)
+print(price)
+```
+The Monte Carlo simulation provides the following results:
+- The option price with the given parameters is 2.58.
+- The barrier breached in 65858 out of 100000 simulations.
+
+Analyzing Price Variations by Volatility and Time to Maturity
+```{r}
+vol_seq <- seq(0.10, 0.50, by = 0.05)
+time_seq <- seq(30, 730, by = 90)
+
+results <- expand.grid(vol = vol_seq, time = time_seq) %>%
+  mutate(price = mapply(function(vol, time) DownAndInOptionPricer(time, K, S0, vol, r, barrier, num_sims), vol, time))
+
+head(results)
+
+```
+Plotting the Results
+
+```{r, echo=FALSE}
+ggplot(results, aes(x = vol, y = time, fill = price)) +
+  geom_tile() +
+  scale_fill_gradient(low = "yellow", high = "red") +
+  labs(title = "Down-and-In Option Price Variation",
+       x = "Volatility (sigma)",
+       y = "Time to Maturity (days)",
+       fill = "Option Price") +
+  theme_minimal()
+
+```
+Observations:
+- There's a region with particularly high option prices (dark red area), which suggests that for that specific combination of volatility and time to maturity, the option is more valuable.
+- Moving away from this region, the option price decreases (transition from red to yellow), indicating less favorable conditions for high option prices either due to lower volatility, less time to maturity, or both.
+- Certain areas with mid-range volatility and around 200 days to maturity seem to be associated with higher option prices.
+
+### Stress Test Analysis
+
+Extreme values of volatility are added to see how the option price behaves under different scenarios.
+```{r}
+option_prices_long <- as.data.frame(results)
+
+# Filtering the data to include only specific volatilities for the stress test
+filtered_data <- option_prices_long %>%
+  filter(vol %in% c(0.10, 0.15, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50)) %>%
+  mutate(volatility = as.factor(vol)) # For plot aesthetics
+
+# Look at the first few rows of the filtered data
+head(filtered_data)
+```
+
+```{r}
+ggplot(filtered_data, aes(x = time, y = price, color = volatility)) +
+  geom_line() +
+  labs(title = "Stress Tests of Option Prices vs. Time to Maturity and Volatility",
+       x = "Time to Maturity (days)",
+       y = "Option Price",
+       color = "Volatility") +
+  scale_color_manual(values = c(
+    "0.10" = "blue",
+    "0.15" = "cyan",
+    "0.25" = "green",
+    "0.30" = "yellow",
+    "0.35" = "orange",
+    "0.40" = "red",
+    "0.45" = "purple",
+    "0.50" = "magenta",
+    name = "Volatility (σ)",
+    labels = c("0.10" = "σ = 0.10", "0.15" = "σ = 0.15", "0.25" = "σ = 0.25",
+               "0.30" = "σ = 0.30", "0.35" = "σ = 0.35", "0.40" = "σ = 0.40",
+               "0.45" = "σ = 0.45", "0.50" = "σ = 0.50")
+  )) +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+```
+The green line (volatility 0.25) shows a more stable and consistent increase in the option price as time to maturity increases. This suggests that, for a volatility level of 0.25, the option's value gradually increases over time.
+
+The orange line (volatility 0.35) exhibits a much more erratic behavior, with sharp spikes in option price at certain times to maturity. These spikes suggest that there are specific periods where the combination of higher volatility and the remaining time to maturity leads to significant increases in the option price, which could be due to the model's specific sensitivities or market conditions assumed in the simulation.
+
+Key Observations:
+- The chart demonstrates that option prices can be quite sensitive to changes in volatility and time to maturity, with higher volatility generally resulting in higher option prices.
+- The sharp spikes in option prices at certain times to maturity, particularly evident in the orange line, could indicate periods of increased uncertainty or significant market events expected to occur, which could impact the underlying asset's price dramatically.
+
+In accordance with the Honor Code, I certify that my answers here are my own work, and I
+did not make my solutions available to anyone else.
